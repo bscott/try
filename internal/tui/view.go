@@ -10,10 +10,8 @@ import (
 // View renders the TUI based on current state
 func (m Model) View() string {
 	if m.shouldExit {
-		if m.outputCmd != "" {
-			// Output shell command for wrapper to execute
-			return m.outputCmd + "\n"
-		}
+		// Don't render anything when exiting
+		// The command will be output separately by the caller
 		return ""
 	}
 

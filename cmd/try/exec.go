@@ -73,12 +73,21 @@ func runExec(cmd *cobra.Command, args []string) error {
 		// For now, just launch the TUI
 	}
 
-	// Create Bubble Tea program with output to stderr
-	// This ensures only the final command goes to stdout
+	// Open /dev/tty for input and output
+	// This is necessary when running in a shell command substitution $()
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("failed to open /dev/tty: %w", err)
+	}
+	defer tty.Close()
+
+	// Create Bubble Tea program with explicit TTY
+	// View() returns empty on exit, so only our manual output goes to stdout
 	p := tea.NewProgram(
 		model,
 		tea.WithAltScreen(),
-		tea.WithOutput(os.Stderr), // TUI output to stderr
+		tea.WithInput(tty),
+		tea.WithOutput(tty),
 	)
 
 	// Run the program
