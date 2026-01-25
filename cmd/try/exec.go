@@ -73,8 +73,13 @@ func runExec(cmd *cobra.Command, args []string) error {
 		// For now, just launch the TUI
 	}
 
-	// Create Bubble Tea program
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	// Create Bubble Tea program with output to stderr
+	// This ensures only the final command goes to stdout
+	p := tea.NewProgram(
+		model,
+		tea.WithAltScreen(),
+		tea.WithOutput(os.Stderr), // TUI output to stderr
+	)
 
 	// Run the program
 	finalModel, err := p.Run()
@@ -84,11 +89,10 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	// Check if we have a command to output
 	if m, ok := finalModel.(tui.Model); ok {
-		if m.ShouldExit() {
-			output := m.OutputCommand()
-			if output != "" {
-				fmt.Fprint(os.Stdout, output)
-			}
+		output := m.OutputCommand()
+		if output != "" {
+			// Output shell command to stdout for wrapper to eval
+			fmt.Fprint(os.Stdout, output)
 		}
 	}
 
