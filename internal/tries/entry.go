@@ -15,6 +15,7 @@ type Entry struct {
 	ModTime       time.Time // Last modification time
 	HasDatePrefix bool      // Whether the name has a date prefix
 	DatePrefix    string    // Date prefix if present (e.g., "2024-01-25")
+	Git           GitStatus // Git repository status
 }
 
 // Date prefix pattern: YYYY-MM-DD- at the start of the name
@@ -45,6 +46,9 @@ func ParseEntry(path string) (*Entry, error) {
 		entry.HasDatePrefix = true
 		entry.DatePrefix = matches[1]
 	}
+
+	// Get git status
+	entry.Git = GetGitStatus(path)
 
 	return entry, nil
 }

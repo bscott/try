@@ -19,6 +19,11 @@ type Styles struct {
 	SuccessMessage   lipgloss.Style
 	Prompt           lipgloss.Style
 	PromptInput      lipgloss.Style
+	Muted            lipgloss.Style
+	GitBranch        lipgloss.Style
+	GitAhead         lipgloss.Style
+	GitBehind        lipgloss.Style
+	GitDirty         lipgloss.Style
 }
 
 // NewStyles creates a new Styles instance with default styling
@@ -81,5 +86,20 @@ func NewStyles() Styles {
 
 		PromptInput: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252")),
+
+		Muted: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")), // dark gray
+
+		GitBranch: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("81")), // cyan
+
+		GitAhead: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("82")), // green
+
+		GitBehind: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214")), // orange
+
+		GitDirty: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")), // red
 	}
 }

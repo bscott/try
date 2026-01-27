@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bscott/try/internal/tries"
 )
@@ -133,6 +134,37 @@ func (m *Model) renderEntry(b *strings.Builder, entry tries.Entry, isSelected, i
 		line.WriteString(entry.Name)
 	}
 
+	// Git status information
+	if entry.Git.IsRepo {
+		line.WriteString("  ")
+		line.WriteString(m.styles.Muted.Render("│"))
+		line.WriteString(" ")
+
+		// Branch name
+		if entry.Git.Branch != "" {
+			line.WriteString(m.styles.GitBranch.Render(entry.Git.Branch))
+		}
+
+		// Ahead/behind
+		if entry.Git.Ahead > 0 {
+			line.WriteString(m.styles.GitAhead.Render(fmt.Sprintf(" ↑%d", entry.Git.Ahead)))
+		}
+		if entry.Git.Behind > 0 {
+			line.WriteString(m.styles.GitBehind.Render(fmt.Sprintf(" ↓%d", entry.Git.Behind)))
+		}
+
+		// Dirty indicator
+		if entry.Git.IsDirty {
+			line.WriteString(m.styles.GitDirty.Render(" •"))
+		}
+
+		// Last commit time
+		if !entry.Git.LastCommit.IsZero() {
+			ago := formatTimeAgo(entry.Git.LastCommit)
+			line.WriteString(m.styles.Muted.Render(fmt.Sprintf(" %s", ago)))
+		}
+	}
+
 	// Apply styling
 	text := line.String()
 	if isMarked {
@@ -144,6 +176,41 @@ func (m *Model) renderEntry(b *strings.Builder, entry tries.Entry, isSelected, i
 	}
 
 	b.WriteString(text)
+}
+
+// formatTimeAgo formats a time as a human-readable "ago" string
+func formatTimeAgo(t time.Time) string {
+	duration := time.Since(t)
+
+	if duration < time.Minute {
+		return "just now"
+	}
+	if duration < time.Hour {
+		mins := int(duration.Minutes())
+		if mins == 1 {
+			return "1m ago"
+		}
+		return fmt.Sprintf("%dm ago", mins)
+	}
+	if duration < 24*time.Hour {
+		hours := int(duration.Hours())
+		if hours == 1 {
+			return "1h ago"
+		}
+		return fmt.Sprintf("%dh ago", hours)
+	}
+	if duration < 7*24*time.Hour {
+		days := int(duration.Hours() / 24)
+		if days == 1 {
+			return "1d ago"
+		}
+		return fmt.Sprintf("%dd ago", days)
+	}
+	weeks := int(duration.Hours() / 24 / 7)
+	if weeks == 1 {
+		return "1w ago"
+	}
+	return fmt.Sprintf("%dw ago", weeks)
 }
 
 // renderConfirmDeleteView renders the delete confirmation prompt
