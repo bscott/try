@@ -24,6 +24,7 @@ type Styles struct {
 	GitAhead         lipgloss.Style
 	GitBehind        lipgloss.Style
 	GitDirty         lipgloss.Style
+	ColumnHeader     lipgloss.Style
 }
 
 // NewStyles creates a new Styles instance with default styling
@@ -101,5 +102,10 @@ func NewStyles() Styles {
 
 		GitDirty: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")), // red
+
+		ColumnHeader: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")). // medium gray
+			Bold(true).
+			Underline(true),
 	}
 }
