@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/bscott/try/internal/tries"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // View renders the TUI based on current state
@@ -120,65 +119,54 @@ func (m *Model) renderSearchInput(b *strings.Builder) {
 
 // renderColumnHeaders renders the column headers for the entry list
 func (m *Model) renderColumnHeaders(b *strings.Builder) {
+	const nameColWidth = 50 // Match the renderEntry width
+
 	var header strings.Builder
 
-	// Selection/mark column (2 chars)
-	header.WriteString("  ")
+	// Name column header
+	nameHeader := m.styles.ColumnHeader.Render("NAME")
+	header.WriteString(nameHeader)
 
-	// Name column header (40 chars wide)
-	nameHeader := "NAME"
-	header.WriteString(m.styles.ColumnHeader.Render(nameHeader))
-
-	// Padding to align with entries
-	padding := 40 - len(nameHeader)
+	// Pad name column to fixed width (accounting for styling)
+	// The visual width is just "NAME" (4 chars) so pad to nameColWidth
+	padding := nameColWidth - 4 // "NAME" is 4 chars visible
 	if padding > 0 {
 		header.WriteString(strings.Repeat(" ", padding))
 	}
 
-	// Git status column header
-	header.WriteString("  ")
+	// Git status column header (no extra spacing needed)
 	header.WriteString(m.styles.ColumnHeader.Render("GIT STATUS"))
 
 	b.WriteString(header.String())
 	b.WriteString("\n")
 
-	// Separator line
-	separator := "  " + strings.Repeat("─", 40) + "  " + strings.Repeat("─", 35)
+	// Separator line - match column widths
+	separator := strings.Repeat("─", nameColWidth) + strings.Repeat("─", 30)
 	b.WriteString(m.styles.Muted.Render(separator))
 }
 
 // renderEntry renders a single entry in the list
 func (m *Model) renderEntry(b *strings.Builder, entry tries.Entry, isSelected, isMarked bool) {
-	const nameColWidth = 40
+	const nameColWidth = 50
 
 	var nameCol, gitCol strings.Builder
 
-	// Build name column
-	// Mark indicator
-	if isMarked {
-		nameCol.WriteString("✗ ")
-	} else {
-		nameCol.WriteString("  ")
-	}
-
-	// Date prefix and name
+	// Build name column content (without mark indicator)
 	var displayText string
 	if entry.HasDatePrefix {
 		displayText = fmt.Sprintf("[%s] %s", entry.DatePrefix, entry.DisplayName())
 	} else {
 		displayText = entry.Name
 	}
-	nameCol.WriteString(displayText)
 
-	// Pad name column to fixed width
-	nameColText := nameCol.String()
-	nameColLen := len(nameColText)
-	if nameColLen < nameColWidth {
-		nameColText += strings.Repeat(" ", nameColWidth-nameColLen)
-	} else if nameColLen > nameColWidth {
-		// Truncate if too long
-		nameColText = nameColText[:nameColWidth-3] + "..."
+	// Pad or truncate name to fixed width
+	if len(displayText) < nameColWidth {
+		displayText += strings.Repeat(" ", nameColWidth-len(displayText))
+	} else if len(displayText) > nameColWidth {
+		displayText = displayText[:nameColWidth-3] + "..."
 	}
+
+	nameCol.WriteString(displayText)
 
 	// Build git status column
 	if entry.Git.IsRepo {
@@ -210,30 +198,35 @@ func (m *Model) renderEntry(b *strings.Builder, entry tries.Entry, isSelected, i
 	// Combine columns with proper styling
 	var line strings.Builder
 
-	// Style the name column based on selection/mark status
-	var nameStyle lipgloss.Style
+	// Mark indicator (before the columns)
 	if isMarked {
-		nameStyle = m.styles.ListItemMarked
-	} else if isSelected {
-		nameStyle = m.styles.ListItemSelected
+		line.WriteString(m.styles.ListItemMarked.Render("✗ "))
 	} else {
-		nameStyle = m.styles.ListItem
+		line.WriteString("  ")
 	}
 
-	// Apply date prefix styling within name column if present
+	// Style the name column based on selection/mark status
+	nameText := nameCol.String()
 	if entry.HasDatePrefix {
-		// Extract the date part and the rest
+		// Apply date prefix styling
 		datePart := fmt.Sprintf("[%s]", entry.DatePrefix)
-		restPart := nameColText[len(datePart):]
+		restPart := nameText[len(datePart):]
 
-		// Apply date styling to date part, row styling to rest
-		line.WriteString(m.styles.DatePrefix.Render(datePart))
-		line.WriteString(nameStyle.Render(restPart))
+		if isSelected {
+			line.WriteString(m.styles.DatePrefix.Render(datePart))
+			line.WriteString(m.styles.ListItemSelected.Render(restPart))
+		} else {
+			line.WriteString(m.styles.DatePrefix.Render(datePart))
+			line.WriteString(m.styles.ListItem.Render(restPart))
+		}
 	} else {
-		line.WriteString(nameStyle.Render(nameColText))
+		if isSelected {
+			line.WriteString(m.styles.ListItemSelected.Render(nameText))
+		} else {
+			line.WriteString(m.styles.ListItem.Render(nameText))
+		}
 	}
 
-	line.WriteString("  ")
 	line.WriteString(gitCol.String())
 
 	b.WriteString(line.String())
