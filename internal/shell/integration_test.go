@@ -136,6 +136,42 @@ func TestGenerateFishInit(t *testing.T) {
 	}
 }
 
+// TestGenerateInit_QuotesMaliciousBasePath pins the security fix that a
+// hostile basePath (from $TRY_PATH or a config file) cannot inject shell
+// commands into the generated init script.
+func TestGenerateInit_QuotesMaliciousBasePath(t *testing.T) {
+	// A value with `"; ...; #` would, without quoting, escape the
+	// surrounding double-quoted assignment and inject a command.
+	injected := `/tmp/x"; touch /tmp/PWNED; #`
+
+	for _, shell := range []ShellType{ShellBash, ShellZsh, ShellFish} {
+		got, err := GenerateInit(shell, injected)
+		if err != nil {
+			t.Fatalf("GenerateInit(%v): %v", shell, err)
+		}
+		// The unquoted suffix must not appear in the output; the whole
+		// value should be inside a single-quoted string.
+		if strings.Contains(got, `touch /tmp/PWNED`) && !strings.Contains(got, `'/tmp/x"; touch /tmp/PWNED; #'`) {
+			t.Errorf("shell %v: malicious value not quoted, output:\n%s", shell, got)
+		}
+		// A bare unquoted assignment is the smoking gun.
+		if strings.Contains(got, `TRY_PATH="`+injected) {
+			t.Errorf("shell %v: basePath appears inside double quotes (unquoted form), output:\n%s", shell, got)
+		}
+	}
+}
+
+// TestGenerateInit_QuotesSingleQuoteInBasePath covers paths with a literal
+// single quote, which is the awkward case for the standard '\'' escape.
+func TestGenerateInit_QuotesSingleQuoteInBasePath(t *testing.T) {
+	val := `/tmp/o'reilly`
+	got := GenerateBashInit(val)
+	want := `'/tmp/o'\''reilly'`
+	if !strings.Contains(got, want) {
+		t.Errorf("expected escaped form %s in output, got:\n%s", want, got)
+	}
+}
+
 func TestGenerateInit(t *testing.T) {
 	basePath := "/home/user/tries"
 

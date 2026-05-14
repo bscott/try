@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,18 @@ const (
 	envVarName      = "TRY_PATH"
 	configFileName  = "config.toml"
 	configSubDir    = "try"
+
+	// maxConfigSize caps how much of the config file we will parse. The file
+	// is fully user-controlled, but a runaway value (e.g. accidentally
+	// concatenated logs) shouldn't OOM the CLI.
+	maxConfigSize = 64 * 1024
 )
+
+// shellMetaChars rejects values that would be unsafe to splice into a shell
+// init script even after quoting (NUL truncates C strings; CR/LF break the
+// generated script's line structure). Single quotes are *not* rejected — the
+// shell.shellQuote helper escapes them correctly.
+const shellMetaChars = "\x00\r\n"
 
 // Source identifies where the effective tries path came from.
 type Source string
@@ -30,12 +42,14 @@ const (
 type Resolved struct {
 	Path       string // Absolute, ~-expanded, cleaned
 	Source     Source
-	ConfigFile string // Path to the config file consulted (empty if none / not loaded)
-	EnvVar     string // Name of the env var consulted ("" if none)
+	ConfigFile string // Path the loader would consult, regardless of whether the file exists
+	EnvVar     string // Name of the env var consulted (always "TRY_PATH" today)
 }
 
-// FileConfig is the on-disk schema for ~/.config/try/config.toml.
-type FileConfig struct {
+// fileConfig is the on-disk schema for ~/.config/try/config.toml. Kept
+// unexported — callers should not write config programmatically; they
+// should hand-edit the file or use Resolve to read it back.
+type fileConfig struct {
 	TriesPath string `toml:"tries_path"`
 }
 
@@ -53,19 +67,27 @@ func ConfigFilePath() (string, error) {
 	return filepath.Join(dir, configSubDir, configFileName), nil
 }
 
-// loadFileConfig reads the config file if it exists. A missing file is not an error.
-func loadFileConfig() (FileConfig, string, error) {
+// loadFileConfig reads the config file if it exists. A missing file is not
+// an error. The file is read with a size cap (maxConfigSize) so a runaway
+// file can't OOM the CLI.
+func loadFileConfig() (fileConfig, string, error) {
 	path, err := ConfigFilePath()
 	if err != nil {
-		return FileConfig{}, "", err
+		return fileConfig{}, "", err
 	}
-	var fc FileConfig
-	_, err = toml.DecodeFile(path, &fc)
+
+	f, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return FileConfig{}, path, nil
+			return fileConfig{}, path, nil
 		}
-		return FileConfig{}, path, fmt.Errorf("failed to parse %s: %w", path, err)
+		return fileConfig{}, path, fmt.Errorf("failed to open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	var fc fileConfig
+	if _, err := toml.NewDecoder(io.LimitReader(f, maxConfigSize)).Decode(&fc); err != nil {
+		return fileConfig{}, path, fmt.Errorf("failed to parse %s: %w", path, err)
 	}
 	return fc, path, nil
 }
@@ -88,12 +110,18 @@ func Resolve() (Resolved, error) {
 	if err != nil {
 		return r, err
 	}
-	if strings.TrimSpace(fc.TriesPath) != "" {
-		r.Path = fc.TriesPath
+	if v := strings.TrimSpace(fc.TriesPath); v != "" {
+		if err := validateRawPath(v, "config file "+configPath); err != nil {
+			return r, err
+		}
+		r.Path = v
 		r.Source = SourceConfigFile
 	}
 
 	if env := os.Getenv(envVarName); env != "" {
+		if err := validateRawPath(env, "$"+envVarName); err != nil {
+			return r, err
+		}
 		r.Path = env
 		r.Source = SourceEnv
 	}
@@ -104,6 +132,17 @@ func Resolve() (Resolved, error) {
 	}
 	r.Path = expanded
 	return r, nil
+}
+
+// validateRawPath rejects values that we know are unsafe to splice into the
+// generated shell init script, even after quoting. We intentionally do NOT
+// reject ".." or absolute paths: the user owns their own config and may
+// legitimately point the tries dir anywhere they can write.
+func validateRawPath(p, origin string) error {
+	if strings.ContainsAny(p, shellMetaChars) {
+		return fmt.Errorf("tries path from %s contains a NUL or newline character, refusing to use it", origin)
+	}
+	return nil
 }
 
 // GetBasePath preserves the original API: returns the effective tries dir as an
@@ -121,6 +160,12 @@ func GetBasePath() (string, error) {
 }
 
 // EnsureDir creates the directory if it doesn't already exist.
+//
+// We deliberately use os.MkdirAll here (and not os.Mkdir) because this is
+// the *base* tries directory, which may be nested under paths the user
+// hasn't created yet (e.g. ~/code/tries before ~/code exists). The CLAUDE.md
+// "use os.Mkdir" guidance applies to per-entry directories (each new try),
+// where TOCTOU between exists-check and create matters.
 func EnsureDir(path string) error {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return fmt.Errorf("failed to create tries directory: %w", err)
