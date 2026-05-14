@@ -1,5 +1,6 @@
 # Binaries
-try
+# Root-only — bare "try" would also match the cmd/try/ directory.
+/try
 *.exe
 *.dll
 *.so

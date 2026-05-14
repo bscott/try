@@ -57,6 +57,7 @@ try
 - `try` - Launch interactive TUI
 - `try init [path]` - Generate shell integration script
 - `try exec` - Execute TUI and output shell command (used by wrapper)
+- `try config show` - Print the effective tries path and which source (env / config file / default) it came from
 
 ### Keyboard Shortcuts
 
@@ -104,11 +105,24 @@ try
 
 ## Configuration
 
-### Environment Variables
+The tries base directory is resolved with the following precedence (highest wins):
 
-- `TRY_PATH` - Base directory for try directories (default: `~/src/tries`)
+1. **`$TRY_PATH`** environment variable
+2. **`tries_path`** in the config file at `~/.config/try/config.toml` (or `$XDG_CONFIG_HOME/try/config.toml` if set)
+3. **Default**: `~/src/tries`
 
-Example:
+Inspect what's currently in effect with `try config show`.
+
+### Config file
+
+```toml
+# ~/.config/try/config.toml
+tries_path = "~/code/tries"
+```
+
+`~` is expanded to the user's home directory. The directory is created on first use if it doesn't already exist.
+
+### Environment variable (overrides the config file)
 
 ```bash
 export TRY_PATH="$HOME/experiments"
