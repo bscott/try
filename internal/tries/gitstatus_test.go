@@ -7,10 +7,20 @@ import (
 	"testing"
 )
 
+// requireGit skips the test if git is not on PATH. The production code shells
+// out to git, so a machine without git can't run these tests meaningfully.
+func requireGit(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found on PATH; skipping git-status integration tests")
+	}
+}
+
 // gitInit shells out to git to build a real repo on disk. We deliberately use
 // the system git (matching production behavior) instead of go-git.
 func gitInit(t *testing.T, dir string) {
 	t.Helper()
+	requireGit(t)
 	mustRun(t, dir, "git", "init", "-q", "-b", "main")
 	mustRun(t, dir, "git", "config", "user.email", "test@example.com")
 	mustRun(t, dir, "git", "config", "user.name", "Test")
@@ -36,6 +46,8 @@ func commitFile(t *testing.T, dir, name, body, msg string) {
 }
 
 func TestGetGitStatus_NonGitDir(t *testing.T) {
+	// Intentionally NOT calling requireGit — this case must work even on
+	// systems with no git installed.
 	dir := t.TempDir()
 	s := GetGitStatus(dir)
 	if s.IsRepo {

@@ -111,6 +111,48 @@ func TestResolve_MalformedConfigSurfacesError(t *testing.T) {
 	}
 }
 
+// TestResolve_MalformedConfigShortCircuitsBeforeEnv pins current behavior:
+// if the config file is unparseable, we surface the error rather than
+// silently falling through to $TRY_PATH. The reasoning is that a broken
+// config is almost always a bug the user wants to know about, and silently
+// ignoring it would mask the problem.
+func TestResolve_MalformedConfigShortCircuitsBeforeEnv(t *testing.T) {
+	homeDir, xdgDir := withIsolatedEnv(t)
+	writeConfig(t, xdgDir, "this is not valid toml = = =\n")
+	t.Setenv("TRY_PATH", filepath.Join(homeDir, "from-env"))
+
+	_, err := Resolve()
+	if err == nil {
+		t.Fatal("expected error from malformed config even when env is set, got nil")
+	}
+}
+
+// TestResolve_RejectsShellMetacharsInConfig and ...InEnv pin the security fix:
+// values containing NUL or newline are rejected at config-load time, even
+// before they would be shell-quoted at init-script generation.
+func TestResolve_RejectsShellMetacharsInConfig(t *testing.T) {
+	_, xdgDir := withIsolatedEnv(t)
+	writeConfig(t, xdgDir, "tries_path = \"/tmp/x\\nrm -rf /\"\n")
+
+	_, err := Resolve()
+	if err == nil {
+		t.Fatal("expected error for newline in config tries_path, got nil")
+	}
+	if !strings.Contains(err.Error(), "newline") {
+		t.Errorf("error %q should mention newline/NUL", err)
+	}
+}
+
+func TestResolve_RejectsShellMetacharsInEnv(t *testing.T) {
+	withIsolatedEnv(t)
+	t.Setenv("TRY_PATH", "/tmp/x\nrm -rf /")
+
+	_, err := Resolve()
+	if err == nil {
+		t.Fatal("expected error for newline in $TRY_PATH, got nil")
+	}
+}
+
 func TestGetBasePath_CreatesDir(t *testing.T) {
 	homeDir, _ := withIsolatedEnv(t)
 	t.Setenv("TRY_PATH", filepath.Join(homeDir, "made-on-demand"))
