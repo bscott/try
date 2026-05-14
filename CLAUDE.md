@@ -209,9 +209,20 @@ Key dependencies (see `go.mod`):
 - `github.com/spf13/cobra` - CLI framework
 - `github.com/adrg/xdg` - XDG directory support
 
+## Configuration Resolution
+
+The tries base path is resolved by `internal/config.Resolve()` with precedence:
+
+1. `$TRY_PATH` env var
+2. `tries_path` from `~/.config/try/config.toml` (or `$XDG_CONFIG_HOME/try/config.toml`)
+3. Compiled default `~/src/tries`
+
+`Resolve()` returns a `Resolved{Path, Source, ConfigFile, EnvVar}` so callers can show *where* the path came from (`try config show` does this). Legacy callers can keep using `GetBasePath()` — it wraps `Resolve()` and creates the directory.
+
 ## Environment Variables
 
-- `TRY_PATH` - Base directory for try directories (default: `~/src/tries`)
+- `TRY_PATH` - Highest-precedence override for the tries base dir
+- `XDG_CONFIG_HOME` - If set, config file is read from `$XDG_CONFIG_HOME/try/config.toml` instead of `~/.config/try/config.toml`
 - `SHELL` - Used by init command to detect shell type
 
 ## Shell Integration
@@ -235,7 +246,6 @@ export TRY_PATH="$HOME/src/tries"
 ## Future Improvements
 
 Potential enhancements (not prioritized):
-- [ ] Config file support (~/.config/try/config.toml)
 - [ ] Remote sync (git push/pull for try directories)
 - [ ] Tags/labels for organizing tries
 - [ ] Search history persistence
