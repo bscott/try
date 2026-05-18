@@ -44,14 +44,40 @@ type Resolved struct {
 	Source     Source
 	ConfigFile string // Path the loader would consult, regardless of whether the file exists
 	EnvVar     string // Name of the env var consulted (always "TRY_PATH" today)
+	Promote    Promote
+}
+
+// Promote holds resolved settings for the `try promote` subcommand.
+// All fields are populated with defaults when the user hasn't set them.
+type Promote struct {
+	Root   string // Absolute, ~-expanded, cleaned. Defaults to parent of tries Path.
+	Depth  int    // >=1. Defaults to DefaultPromoteDepth.
+	Picker string // Defaults to DefaultPromotePicker.
 }
 
 // fileConfig is the on-disk schema for ~/.config/try/config.toml. Kept
 // unexported — callers should not write config programmatically; they
 // should hand-edit the file or use Resolve to read it back.
 type fileConfig struct {
-	TriesPath string `toml:"tries_path"`
+	TriesPath string         `toml:"tries_path"`
+	Promote   promoteSection `toml:"promote"`
 }
+
+// promoteSection is the [promote] table — settings for the `try promote`
+// subcommand. All fields are optional; empty values fall back to defaults
+// computed in Resolve.
+type promoteSection struct {
+	Root   string `toml:"root"`   // Root dir to fuzzy-pick destinations from. Default: parent of tries_path.
+	Depth  int    `toml:"depth"`  // Directory walk depth under Root for candidate destinations. Default: 1.
+	Picker string `toml:"picker"` // Picker tool. Default: "fzf". Today only "fzf" is supported.
+}
+
+// Default values for the [promote] section. Exposed so callers and tests
+// can compare against them.
+const (
+	DefaultPromoteDepth  = 1
+	DefaultPromotePicker = "fzf"
+)
 
 // ConfigFilePath returns the path the config loader will read from.
 // It honors $XDG_CONFIG_HOME, falling back to ~/.config.
@@ -131,7 +157,43 @@ func Resolve() (Resolved, error) {
 		return r, err
 	}
 	r.Path = expanded
+
+	promote, err := resolvePromote(fc.Promote, r.Path)
+	if err != nil {
+		return r, err
+	}
+	r.Promote = promote
 	return r, nil
+}
+
+// resolvePromote fills in defaults for the [promote] section. `triesPath` is
+// the already-resolved (absolute, expanded) tries directory — used to derive
+// the default Root (its parent).
+func resolvePromote(fc promoteSection, triesPath string) (Promote, error) {
+	p := Promote{
+		Root:   strings.TrimSpace(fc.Root),
+		Depth:  fc.Depth,
+		Picker: strings.TrimSpace(fc.Picker),
+	}
+	if p.Root == "" {
+		p.Root = filepath.Dir(triesPath)
+	} else {
+		if err := validateRawPath(p.Root, "config file [promote].root"); err != nil {
+			return p, err
+		}
+		expanded, err := expandPath(p.Root)
+		if err != nil {
+			return p, err
+		}
+		p.Root = expanded
+	}
+	if p.Depth <= 0 {
+		p.Depth = DefaultPromoteDepth
+	}
+	if p.Picker == "" {
+		p.Picker = DefaultPromotePicker
+	}
+	return p, nil
 }
 
 // validateRawPath rejects values that we know are unsafe to splice into the

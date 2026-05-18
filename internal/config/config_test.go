@@ -196,3 +196,60 @@ func TestConfigFilePath_FallsBackToHomeDotConfig(t *testing.T) {
 		t.Errorf("ConfigFilePath = %q, want %q", got, want)
 	}
 }
+
+// --- [promote] section tests ---
+
+func TestResolve_PromoteDefaults(t *testing.T) {
+	homeDir, _ := withIsolatedEnv(t)
+	t.Setenv("TRY_PATH", filepath.Join(homeDir, "code", "tries"))
+
+	r, err := Resolve()
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	wantRoot := filepath.Join(homeDir, "code")
+	if r.Promote.Root != wantRoot {
+		t.Errorf("Promote.Root = %q, want %q (parent of tries_path)", r.Promote.Root, wantRoot)
+	}
+	if r.Promote.Depth != DefaultPromoteDepth {
+		t.Errorf("Promote.Depth = %d, want %d", r.Promote.Depth, DefaultPromoteDepth)
+	}
+	if r.Promote.Picker != DefaultPromotePicker {
+		t.Errorf("Promote.Picker = %q, want %q", r.Promote.Picker, DefaultPromotePicker)
+	}
+}
+
+func TestResolve_PromoteFromConfig(t *testing.T) {
+	homeDir, xdgDir := withIsolatedEnv(t)
+	t.Setenv("TRY_PATH", filepath.Join(homeDir, "code", "tries"))
+	writeConfig(t, xdgDir, `
+tries_path = "~/code/tries"
+
+[promote]
+root   = "~/projects"
+depth  = 2
+picker = "fzf"
+`)
+
+	r, err := Resolve()
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	wantRoot := filepath.Join(homeDir, "projects")
+	if r.Promote.Root != wantRoot {
+		t.Errorf("Promote.Root = %q, want %q", r.Promote.Root, wantRoot)
+	}
+	if r.Promote.Depth != 2 {
+		t.Errorf("Promote.Depth = %d, want 2", r.Promote.Depth)
+	}
+}
+
+func TestResolve_PromoteRejectsBadRoot(t *testing.T) {
+	_, xdgDir := withIsolatedEnv(t)
+	writeConfig(t, xdgDir, "[promote]\nroot = \"/tmp/x\\nbad\"\n")
+
+	_, err := Resolve()
+	if err == nil {
+		t.Fatal("expected error for newline in [promote].root, got nil")
+	}
+}

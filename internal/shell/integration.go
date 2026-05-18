@@ -17,6 +17,10 @@ func shellQuote(s string) string {
 // basePath is shell-quoted before being spliced into the generated script —
 // the value is user-controlled (env, config file, or CLI arg) and the
 // generated script is run via `eval "$(try init)"`.
+//
+// The wrapper dispatches by subcommand: `try` and `try <query>` go to the
+// exec TUI; `try promote ...` runs promote with stdout eval'd so its cd
+// command lands in the calling shell; everything else passes through.
 func GenerateBashInit(basePath string) string {
 	q := shellQuote(basePath)
 	return fmt.Sprintf(`# try - Shell integration for bash
@@ -25,10 +29,23 @@ func GenerateBashInit(basePath string) string {
 
 try() {
     local result
-    result=$(command try exec "$@" 2>/dev/tty)
-    if [[ $? -eq 0 ]]; then
-        eval "$result"
-    fi
+    case "${1:-}" in
+        promote)
+            result=$(command try "$@" 2>/dev/tty)
+            if [[ $? -eq 0 ]]; then
+                eval "$result"
+            fi
+            ;;
+        config|init|help|completion|--help|-h|--version)
+            command try "$@"
+            ;;
+        *)
+            result=$(command try exec "$@" 2>/dev/tty)
+            if [[ $? -eq 0 ]]; then
+                eval "$result"
+            fi
+            ;;
+    esac
 }
 
 export TRY_PATH=%s
@@ -36,7 +53,8 @@ export TRY_PATH=%s
 }
 
 // GenerateZshInit generates the zsh shell function for try integration.
-// See GenerateBashInit for why basePath is shell-quoted.
+// See GenerateBashInit for why basePath is shell-quoted and for the
+// subcommand-dispatch rationale.
 func GenerateZshInit(basePath string) string {
 	q := shellQuote(basePath)
 	return fmt.Sprintf(`# try - Shell integration for zsh
@@ -45,10 +63,23 @@ func GenerateZshInit(basePath string) string {
 
 try() {
     local result
-    result=$(command try exec "$@" 2>/dev/tty)
-    if [[ $? -eq 0 ]]; then
-        eval "$result"
-    fi
+    case "${1:-}" in
+        promote)
+            result=$(command try "$@" 2>/dev/tty)
+            if [[ $? -eq 0 ]]; then
+                eval "$result"
+            fi
+            ;;
+        config|init|help|completion|--help|-h|--version)
+            command try "$@"
+            ;;
+        *)
+            result=$(command try exec "$@" 2>/dev/tty)
+            if [[ $? -eq 0 ]]; then
+                eval "$result"
+            fi
+            ;;
+    esac
 }
 
 export TRY_PATH=%s
@@ -56,7 +87,8 @@ export TRY_PATH=%s
 }
 
 // GenerateFishInit generates the fish shell function for try integration.
-// See GenerateBashInit for why basePath is shell-quoted.
+// See GenerateBashInit for why basePath is shell-quoted and for the
+// subcommand-dispatch rationale.
 func GenerateFishInit(basePath string) string {
 	q := shellQuote(basePath)
 	return fmt.Sprintf(`# try - Shell integration for fish
@@ -64,9 +96,27 @@ func GenerateFishInit(basePath string) string {
 # try init %s | source
 
 function try
-    set result (command try exec $argv 2>/dev/tty)
-    if test $status -eq 0
-        eval $result
+    set -l result
+    if test (count $argv) -eq 0
+        set result (command try exec 2>/dev/tty)
+        if test $status -eq 0
+            eval $result
+        end
+        return
+    end
+    switch $argv[1]
+        case promote
+            set result (command try $argv 2>/dev/tty)
+            if test $status -eq 0
+                eval $result
+            end
+        case config init help completion --help -h --version
+            command try $argv
+        case '*'
+            set result (command try exec $argv 2>/dev/tty)
+            if test $status -eq 0
+                eval $result
+            end
     end
 end
 
