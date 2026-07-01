@@ -69,7 +69,7 @@ type fileConfig struct {
 type promoteSection struct {
 	Root   string `toml:"root"`   // Root dir to fuzzy-pick destinations from. Default: parent of tries_path.
 	Depth  int    `toml:"depth"`  // Directory walk depth under Root for candidate destinations. Default: 1.
-	Picker string `toml:"picker"` // Picker tool. Default: "fzf". Today only "fzf" is supported.
+	Picker string `toml:"picker"` // Picker tool: "fzf" (default; falls back to the built-in picker if fzf isn't installed) or "builtin".
 }
 
 // Default values for the [promote] section. Exposed so callers and tests

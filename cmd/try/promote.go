@@ -15,10 +15,14 @@ var promoteCmd = &cobra.Command{
 	Long: `Graduate a directory out of the tries dir into a real project location.
 
 The promote workflow:
-  1. Pick which try to graduate (via fzf if [try-name] is omitted).
-  2. Pick the destination parent directory under promote.root (via fzf,
+  1. Pick which try to graduate (interactively if [try-name] is omitted).
+  2. Pick the destination parent directory under promote.root (interactively,
      unless --to is given).
   3. Move the dir, stripping the YYYY-MM-DD- date prefix (unless --keep-date).
+
+Interactive selection uses fzf when it's installed. If fzf isn't on PATH,
+promote falls back to a built-in fuzzy picker automatically, so it works
+out-of-the-box. Set picker = "builtin" to always use the built-in picker.
 
 The new path is also emitted to stdout as a "cd <path>" line, so if your
 shell wrapper evals try's stdout (see ` + "`try init`" + `), promoting auto-cd's
@@ -28,12 +32,12 @@ Configure defaults in ~/.config/try/config.toml:
 
   [promote]
   root   = "~/code"   # parent of tries_path by default
-  depth  = 1          # directory walk depth for fzf candidates
-  picker = "fzf"
+  depth  = 1          # directory walk depth for destination candidates
+  picker = "fzf"      # "fzf" (falls back to built-in if fzf is absent) or "builtin"
 
 Examples:
   try promote                                  # fully interactive
-  try promote 2026-02-11-subtrackr-website     # named source, fzf for dest
+  try promote 2026-02-11-subtrackr-website     # named source, pick dest
   try promote subtrackr-website --to personal  # named source, named dest
   try promote --dry-run                        # show planned move only
 `,
@@ -43,7 +47,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(promoteCmd)
 
-	promoteCmd.Flags().StringP("to", "t", "", "Destination dir under promote.root (skip dest fzf). Relative or absolute.")
+	promoteCmd.Flags().StringP("to", "t", "", "Destination dir under promote.root (skip dest picker). Relative or absolute.")
 	promoteCmd.Flags().String("root", "", "Override [promote].root for this invocation.")
 	promoteCmd.Flags().Int("depth", 0, "Override [promote].depth for this invocation.")
 	promoteCmd.Flags().Bool("keep-date", false, "Preserve the YYYY-MM-DD- date prefix in the new dir name.")
