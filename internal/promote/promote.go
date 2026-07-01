@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/bscott/try/internal/config"
+	"github.com/bscott/try/internal/picker"
 	"github.com/bscott/try/internal/tries"
 )
 
@@ -247,22 +248,53 @@ func candidateDirs(root string, maxDepth int, triesPath string) ([]string, error
 	return out, nil
 }
 
-// runPicker invokes the configured fuzzy picker (today: fzf) with the given
-// labels on stdin and returns the selected line. The picker uses /dev/tty
-// for its UI; stdin/stdout are pipes used to feed candidates and read the
-// selection.
-func runPicker(picker, prompt string, labels []string) (string, error) {
-	if picker == "" {
-		picker = config.DefaultPromotePicker
+// runPicker selects a single label using the configured picker and returns the
+// chosen line. It supports two pickers:
+//
+//   - "fzf" (default): shell out to fzf when it is installed. When fzf is the
+//     configured/default picker but is NOT on PATH, we transparently fall back
+//     to the built-in picker instead of erroring — so promote works
+//     out-of-the-box without requiring an fzf install.
+//   - "builtin": always use the built-in Bubble Tea fuzzy picker
+//     (internal/picker), even when fzf is available.
+//
+// Cancellation (ESC / Ctrl-C, or fzf exit 130) surfaces as a clean "cancelled"
+// error from either backend.
+func runPicker(pickerName, prompt string, labels []string) (string, error) {
+	if pickerName == "" {
+		pickerName = config.DefaultPromotePicker
 	}
-	if picker != "fzf" {
-		return "", fmt.Errorf("unsupported picker %q (only \"fzf\" is supported today)", picker)
+	switch pickerName {
+	case "fzf":
+		if bin, err := exec.LookPath("fzf"); err == nil {
+			return runFzf(bin, prompt, labels)
+		}
+		// fzf requested/defaulted but not installed → built-in fallback.
+		return runBuiltin(prompt, labels)
+	case "builtin":
+		return runBuiltin(prompt, labels)
+	default:
+		return "", fmt.Errorf("unsupported picker %q (use \"fzf\" or \"builtin\")", pickerName)
 	}
-	bin, err := exec.LookPath("fzf")
-	if err != nil {
-		return "", fmt.Errorf("fzf not found on PATH — install it (`brew install fzf`) or pass a destination flag")
-	}
+}
 
+// runBuiltin selects a label via the built-in Bubble Tea fuzzy picker. It maps
+// the picker's cancellation into the same "cancelled" error the fzf path uses.
+func runBuiltin(prompt string, labels []string) (string, error) {
+	picked, err := picker.Select(prompt, labels)
+	if err != nil {
+		if errors.Is(err, picker.ErrCancelled) {
+			return "", errors.New("cancelled")
+		}
+		return "", err
+	}
+	return picked, nil
+}
+
+// runFzf shells out to fzf with the given labels on stdin and returns the
+// selected line. fzf uses /dev/tty for its UI; stdin/stdout are pipes used to
+// feed candidates and read the selection.
+func runFzf(bin, prompt string, labels []string) (string, error) {
 	cmd := exec.Command(bin,
 		"--prompt="+prompt+"> ",
 		"--height=40%",
